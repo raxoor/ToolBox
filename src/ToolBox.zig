@@ -50,37 +50,37 @@ test "strBspaceUntilChar" {
 }
 
 ///Writes to a null terminated u8 buffer
+const path_separator: [1]u8 = .{@as(u8, @intCast(std.fs.path.sep))};
 pub const PathWritter = struct {
-    buffer: [255]u8 = [_]u8{0} ** 255,
+    buffer: [260]u8 = [_]u8{0} ** 260,
     len: u8 = 0,
+    sep: []const u8 = path_separator[0..],
 
     pub fn write(self: *PathWritter, str: []const u8) void {
+        if (self.buffer[self.len] != self.sep[0] and self.len != 0) {
+            @memcpy(self.buffer[self.len .. self.len + self.sep.len], self.sep);
+            self.len += 1;
+        }
         @memcpy(self.buffer[self.len .. self.len + str.len], str);
         self.len +|= @as(u8, @intCast(str.len));
     }
 
-    pub fn removeLen(self: *PathWritter, len: u8) void {
-        if (self.len < len) {
-            self.len = 0;
-        } else {
-            self.len -= len;
-        }
-        @memset(self.buffer[self.len..], 0);
-    }
     /// If char not in buffer the whole buffer will be empty
-    pub fn removeUntilChar(self: *PathWritter, char: []const u8) void {
+    pub fn removeUntilSep(self: *PathWritter) void {
         const end = self.len;
-        while (self.buffer[self.len] != char[0]) {
+        if (self.buffer[end] == self.sep[0]) self.len -= 1;
+        while (self.buffer[self.len] != self.sep[0]) {
             if (self.len == 0) break;
             self.len -= 1;
         }
         @memset(self.buffer[self.len..end], 0);
     }
     /// Return string/value until char
-    pub fn returnUntilChar(self: *PathWritter, char: []const u8) []const u8 {
-        if (self.buffer[self.len] == char[0]) self.len -= 1;
+    pub fn returnUntilSep(self: *PathWritter) []const u8 {
+        if (self.len == 0) return "";
+        if (self.buffer[self.len] == self.sep[0]) self.len -= 1;
         var i = self.len;
-        while (self.buffer[i] != char[0]) : (i -= 1) {
+        while (self.buffer[i] != self.sep[0]) : (i -= 1) {
             if (i == 0) break;
         }
         return self.buffer[i + 1 .. self.len];
@@ -90,6 +90,25 @@ pub const PathWritter = struct {
         return self.buffer[0..self.len];
     }
 };
+
+test "PathWriter" {
+    var test_writer = PathWritter{};
+    test_writer.write("C:\\root");
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\root"));
+    try std.testing.expect(std.mem.eql(u8, test_writer.buffer[0..test_writer.len], "C:\\root"));
+    test_writer.write("new_dir");
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\root\\new_dir"));
+    try std.testing.expect(std.mem.eql(u8, test_writer.returnUntilSep(), "new_dir"));
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\root\\new_dir"));
+    test_writer.removeUntilSep();
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\root"));
+    test_writer.removeUntilSep();
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:"));
+    test_writer.removeUntilSep();
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), ""));
+    try std.testing.expect(std.mem.eql(u8, test_writer.returnUntilSep(), ""));
+}
+
 //Dirty and ugly untill better methods for input validation become available
 //This function is probably more strict than windows in some cassess and theres probably
 // some edge cassess I missed.
