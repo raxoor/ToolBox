@@ -56,12 +56,20 @@ pub const PathWritter = struct {
     len: u16 = 0,
     sep: []const u8 = path_separator[0..],
 
+    ///Write to path adding a separator
     pub fn write(self: *PathWritter, str: []const u8) !void {
         if (self.len + str.len > self.buffer.len - 1) return BufferError.BufferOverflow;
         if (self.buffer[self.len] != self.sep[0] and self.len != 0) {
             @memcpy(self.buffer[self.len .. self.len + self.sep.len], self.sep);
             self.len += 1;
         }
+        @memcpy(self.buffer[self.len .. self.len + str.len], str);
+        self.len +|= @as(u16, @intCast(str.len));
+    }
+
+    ///Write to buffer as is nothing will be added
+    pub fn writeNoSep(self: *PathWritter, str: []const u8) !void {
+        if (self.len + str.len > self.buffer.len) return BufferError.BufferOverflow;
         @memcpy(self.buffer[self.len .. self.len + str.len], str);
         self.len +|= @as(u16, @intCast(str.len));
     }
@@ -76,6 +84,7 @@ pub const PathWritter = struct {
         }
         @memset(self.buffer[self.len..end], 0);
     }
+
     /// Return string/value until char
     pub fn returnUntilSep(self: *PathWritter) []const u8 {
         if (self.len == 0) return "";
@@ -86,11 +95,13 @@ pub const PathWritter = struct {
         }
         return self.buffer[i + 1 .. self.len];
     }
+
     ///Reset the buffer
     pub fn clear(self: *PathWritter) void {
         @memset(self.buffer[0..self.len], 0);
         self.len = 0;
     }
+
     /// Return the string/value as a slice
     pub fn value(self: *PathWritter) []const u8 {
         return self.buffer[0..self.len];
@@ -120,6 +131,16 @@ test "PathWriter" {
     try std.testing.expectEqual(test_writer.buffer.len - 1, test_writer.len);
     test_writer.clear();
     try std.testing.expect(std.mem.eql(u8, test_writer.value(), ""));
+    try test_writer.write("C:\\root");
+    try test_writer.writeNoSep("Hello World!");
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\rootHello World!"));
+    test_writer.clear();
+    try test_writer.write("C:\\root\\");
+    try test_writer.writeNoSep("Hello World!");
+    try std.testing.expect(std.mem.eql(u8, test_writer.value(), "C:\\root\\Hello World!"));
+    test_writer.clear();
+    try test_writer.writeNoSep("C:\\root\\new_dir\\This_should_not_trigger_a_BufferOverflow_error\\Since_the_lenghth_is_lower_than_the_buffer_array_lenght\\The_buffer_array_is_a_fixed_size_of_260_since_that_is_the_maximum_allowed_path_lemghth_under_windows\\as_you_can_see_it_is_plenty_long_even_th");
+    try std.testing.expectEqual(test_writer.buffer.len, test_writer.len);
 }
 
 //Dirty and ugly untill better methods for input validation become available
