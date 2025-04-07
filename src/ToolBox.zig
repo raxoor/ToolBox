@@ -200,3 +200,35 @@ test "isPathValid" {
     try std.testing.expectEqual(isPathValid("C:\\Tools\\my._projects.\\zig\\zag"), false);
     try std.testing.expectEqual(isPathValid(""), false);
 }
+
+//Caller must free!! Takes in an ArgIterator and return a UTF-16 string
+pub fn gatherArgvToUTF16(arg_iter: anytype, allocator: std.mem.Allocator) ![]u16 {
+    var ptr = try allocator.alloc(u16, 0);
+
+    while (arg_iter.next()) |arg| {
+        const utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, arg);
+        defer allocator.free(utf16);
+
+        const old_len = ptr.len;
+        ptr = try allocator.realloc(ptr, ptr.len + utf16.len + 1);
+        @memcpy(ptr[old_len .. ptr.len - 1], utf16);
+        ptr[ptr.len - 1] = 0x20;
+    }
+
+    return ptr;
+}
+
+test "gatherArgvToUTF16" {
+    const allocator = std.testing.allocator;
+
+    const input = "Hello World,These,Are,Args";
+    var iter = std.mem.splitAny(u8, input, ",");
+    const utf8 = "Hello World These Are Args ";
+    const utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, utf8);
+    defer allocator.free(utf16);
+
+    const result = try gatherArgvToUTF16(&iter, allocator);
+    defer allocator.free(result);
+
+    try std.testing.expect(std.mem.eql(u16, utf16, result));
+}
