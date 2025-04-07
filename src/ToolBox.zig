@@ -201,9 +201,19 @@ test "isPathValid" {
     try std.testing.expectEqual(isPathValid(""), false);
 }
 
-//Caller must free!! Takes in an ArgIterator and return a UTF-16 string
-pub fn gatherArgvToUTF16(arg_iter: anytype, allocator: std.mem.Allocator) ![]u16 {
-    var ptr = try allocator.alloc(u16, 0);
+//Caller must free!! Takes in an ArgIterator and return a UTF-16 string if you don't need to prepend anything pass null
+pub fn gatherArgvToUTF16(arg_iter: anytype, allocator: std.mem.Allocator, prepend: ?[]const u8) ![]u16 {
+    const pre = prepend orelse "";
+    var ptr: []u16 = undefined;
+    if (pre.len != 0) {
+        ptr = try allocator.alloc(u16, pre.len + 1);
+        const utf16pre = try std.unicode.utf8ToUtf16LeAllocZ(allocator, pre);
+        defer allocator.free(utf16pre);
+        @memcpy(ptr[0 .. ptr.len - 1], utf16pre);
+        ptr[ptr.len - 1] = 0x20; //Hex space
+    } else {
+        ptr = try allocator.alloc(u16, pre.len);
+    }
 
     while (arg_iter.next()) |arg| {
         const utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, arg);
@@ -212,7 +222,7 @@ pub fn gatherArgvToUTF16(arg_iter: anytype, allocator: std.mem.Allocator) ![]u16
         const old_len = ptr.len;
         ptr = try allocator.realloc(ptr, ptr.len + utf16.len + 1);
         @memcpy(ptr[old_len .. ptr.len - 1], utf16);
-        ptr[ptr.len - 1] = 0x20;
+        ptr[ptr.len - 1] = 0x20; // Hex space
     }
 
     return ptr;
@@ -226,9 +236,16 @@ test "gatherArgvToUTF16" {
     const utf8 = "Hello World These Are Args ";
     const utf16 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, utf8);
     defer allocator.free(utf16);
-
-    const result = try gatherArgvToUTF16(&iter, allocator);
+    const result = try gatherArgvToUTF16(&iter, allocator, null);
     defer allocator.free(result);
-
     try std.testing.expect(std.mem.eql(u16, utf16, result));
+
+    const input_2 = "World,These,Are,Args";
+    var iter_2 = std.mem.splitAny(u8, input_2, ",");
+    const utf8_2 = "Hello World These Are Args ";
+    const utf16_2 = try std.unicode.utf8ToUtf16LeAllocZ(allocator, utf8_2);
+    defer allocator.free(utf16_2);
+    const result_2 = try gatherArgvToUTF16(&iter_2, allocator, "Hello");
+    defer allocator.free(result_2);
+    try std.testing.expect(std.mem.eql(u16, utf16_2, result_2));
 }
